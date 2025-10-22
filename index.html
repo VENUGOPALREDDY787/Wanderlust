@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mini Code Visualiser (JS → Flowchart)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial; margin: 18px; }
+    textarea { width: 100%; height: 240px; font-family: monospace; font-size:14px; }
+    .controls { margin: 10px 0; display:flex; gap:8px; align-items:center; }
+    #diagram { border:1px solid #ddd; padding:8px; min-height:240px; }
+    button { padding:8px 12px; border-radius:6px; cursor:pointer; }
+    .small { font-size:13px; color:#555; }
+  </style>
+  <!-- Esprima (JS parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/esprima@4.0.1/dist/esprima.min.js"></script>
+  <!-- Mermaid for rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <h2>Mini Code Visualiser — JavaScript → Flowchart</h2>
+  <div class="small">Paste JS code below and click <strong>Generate</strong>. This MVP supports simple sequences, if/else, while/for, return, and function blocks.</div>
+
+  <div style="margin-top:12px;">
+    <textarea id="code" spellcheck="false">// Example:
+function foo(x) {
+  if (x > 5) {
+    console.log("big");
+  } else {
+    console.log("small");
+  }
+  for (let i=0;i<3;i++){
+    x += i;
+  }
+  return x;
+}
+
+foo(7);</textarea>
+  </div>
+
+  <div class="controls">
+    <button id="genBtn">Generate Flowchart</button>
+    <label class="small">Layout:
+      <select id="dir">
+        <option value="TD">Top→Down</option>
+        <option value="LR">Left→Right</option>
+      </select>
+    </label>
+    <label class="small" style="margin-left:auto">Language: <b>JavaScript (MVP)</b></label>
+  </div>
+
+  <div id="diagram"></div>
+
+<script>
+mermaid.initialize({ startOnLoad: false });
+
+function uniqueId(prefix='n') {
+  uniqueId._n = (uniqueId._n||0) + 1;
+  return prefix + uniqueId._n;
+}
+
+// Very small helper to make readable node labels (escape)
+function esc(s) {
+  return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'\\n').replace(/\r/g,'');
+}
+
+// Convert a list of AST statements to a sequence of blocks and edges.
+// Returns {nodes:[], edges:[], entry: id, exit: id}
+function buildFromStatements(stmts) {
+  const nodes = [], edges = [];
+  let prevExit = null;
+  const entry = uniqueId('entry'), exit = uniqueId('exit');
+
+  // create a start node
+  nodes.push({id: entry, label: 'start', shape:'round'});
+
+  let last = entry;
+
+  for (const st of stmts) {
+    const res = buildFromNode(st);
+    // connect previous to res.entry
+    edges.push({from:last, to:res.entry});
+    // append nodes/edges
+    nodes.push(...res.nodes);
+    edges.push(...res.edges);
+    last = res.exit;
+  }
+
+  // connect last to exit
+  edges.push({from:last, to:exit});
+  nodes.push({id: exit, label: 'end', shape:'round'});
+
+  // dedupe nodes by id
+  const nodeMap = {};
+  for (const n of nodes) nodeMap[n.id] = n;
+  const finalNodes = Object.values(nodeMap);
+
+  return {nodes: finalNodes, edges, entry, exit};
+}
+
+function buildFromNode(node) {
+  // returns {nodes, edges, entry, exit}
+  if (!node) {
+    const id = uniqueId('n');
+    return {nodes:[{id,label:'noop'}], edges:[], entry:id, exit:id};
+  }
+
+  switch(node.type) {
+    case 'FunctionDeclaration': {
+      const fnId = uniqueId('fn');
+      const label = `function ${node.id ? node.id.name : ''}(${(node.params||[]).map(p=>p.name).join(',')})`;
+      const fnNode = {id:fnId, label, shape:'sub'};
+      // build body
+      const bodyRes = buildFromStatements(node.body.body);
+      const edges = [{from:fnId, to:bodyRes.entry}, ...bodyRes.edges];
+      // after body connect to exit node of function (fnExit)
+      return {nodes:[fnNode, ...bodyRes.nodes], edges, entry:fnId, exit:bodyRes.exit};
+    }
+
+    case 'IfStatement': {
+      const condId = uniqueId('cond');
+      const condLabel = `if (${esc(codeForNode(node.test))})`;
+      const nodes = [{id:condId, label:condLabel, shape:'diamond'}];
+      const edges = [];
+      // consequent
+      const cons = buildFromStatements(node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent]);
+      edges.push({from:condId, to:cons.entry, label:'yes'});
+      nodes.push(...cons.nodes); edges.push(...cons.edges);
+      // alternate
+      if (node.alternate) {
+        const alt = buildFromStatements(node.alternate.type === 'BlockStatement' ? node.alternate.body : [node.alternate]);
+        edges.push({from:condId, to:alt.entry, label:'no'});
+        nodes.push(...alt.nodes); edges.push(...alt.edges);
+        // create a merge node
+        const merge = uniqueId('merge');
+        nodes.push({id:merge, label:'merge', shape:'circle'});
+        edges.push({from:cons.exit, to:merge});
+        edges.push({from:alt.exit, to:merge});
+        return {nodes, edges, entry:condId, exit:merge};
+      } else {
+        // no else -> connect 'no' directly to a merge node
+        const merge = uniqueId('merge');
+        nodes.push({id:merge, label:'merge', shape:'circle'});
+        edges.push({from:cons.exit, to:merge});
+        edges.push({from:condId, to:merge, label:'no'});
+        return {nodes, edges, entry:condId, exit:merge};
+      }
+    }
+
+    case 'WhileStatement':
+    case 'ForStatement': {
+      const condId = uniqueId('cond');
+      const cname = node.type === 'WhileStatement' ? `while (${esc(codeForNode(node.test) || '')})` : `for (${esc(codeForNode(node.init)||'')} ; ${esc(codeForNode(node.test)||'')} ; ${esc(codeForNode(node.update)||'')})`;
+      const nodes = [{id:condId, label:cname, shape:'diamond'}];
+      const bodyStmts = node.body.type === 'BlockStatement' ? node.body.body : [node.body];
+      const bodyRes = buildFromStatements(bodyStmts);
+      const edges = [{from:condId, to:bodyRes.entry, label:'yes'} , ...bodyRes.edges ];
+      // loop back from body exit to cond
+      edges.push({from:bodyRes.exit, to:condId, label:'loop'});
+      // on 'no' go to after loop node
+      const after = uniqueId('afterLoop');
+      nodes.push(...bodyRes.nodes, {id:after,label:'afterLoop', shape:'circle'});
+      edges.push({from:condId, to:after, label:'no'});
+      return {nodes, edges, entry:condId, exit:after};
+    }
+
+    case 'ReturnStatement': {
+      const id = uniqueId('ret');
+      const label = `return ${node.argument ? esc(codeForNode(node.argument)) : ''}`;
+      return {nodes:[{id,label}], edges:[], entry:id, exit:id};
+    }
+
+    case 'ExpressionStatement':
+    case 'VariableDeclaration': {
+      const id = uniqueId('stmt');
+      const label = node.type === 'ExpressionStatement' ? esc(codeForNode(node.expression)) : esc(codeForNode(node));
+      return {nodes:[{id, label}], edges:[], entry:id, exit:id};
+    }
+
+    case 'BlockStatement': {
+      return buildFromStatements(node.body);
+    }
+
+    default: {
+      // fallback: create simple statement node with source snippet
+      const id = uniqueId('stmt');
+      return {nodes:[{id, label: esc(codeForNode(node) || node.type)}], edges:[], entry:id, exit:id};
+    }
+  }
+}
+
+// Helper: get source string for a node using escodegen-like quick formatting
+function codeForNode(n) {
+  if (!n) return '';
+  try {
+    switch(n.type) {
+      case 'Identifier': return n.name;
+      case 'Literal': return JSON.stringify(n.value);
+      case 'BinaryExpression': return `${codeForNode(n.left)} ${n.operator} ${codeForNode(n.right)}`;
+      case 'UpdateExpression': return `${n.prefix ? n.operator : ''}${codeForNode(n.argument)}${n.prefix ? '' : n.operator}`;
+      case 'AssignmentExpression': return `${codeForNode(n.left)} ${n.operator} ${codeForNode(n.right)}`;
+      case 'CallExpression': return `${codeForNode(n.callee)}(${(n.arguments||[]).map(a=>codeForNode(a)).join(',')})`;
+      case 'MemberExpression': return `${codeForNode(n.object)}.${codeForNode(n.property)}`;
+      case 'VariableDeclaration': return n.declarations.map(d => `${codeForNode(d.id)}${d.init ? ' = '+codeForNode(d.init) : ''}`).join(', ');
+      case 'FunctionDeclaration': return `function ${n.id ? n.id.name : ''}()`;
+      case 'ForStatement': return 'for(...)';
+      case 'WhileStatement': return 'while(...)';
+      default:
+        // naive fallback: try to JSON stringify some of it
+        return n.type;
+    }
+  } catch(e) {
+    return n.type || '';
+  }
+}
+
+function renderMermaid(nodes, edges, dir='TD') {
+  // Build mermaid flowchart
+  // Map shapes to MERMAID syntax
+  const shapeMap = {
+    'diamond': ' {', // diamond: use decision style (--> set class later)
+  };
+
+  // We'll use a simple box/diamond notation using style classes
+  let mer = `flowchart ${dir}\n`;
+
+  // nodes lines
+  for (const n of nodes) {
+    // choose shape token: default rectangle: [label], round:([label]), diamond:>{label}?
+    let line;
+    if (n.shape === 'round') line = `${n.id}(("${n.label}"))`;
+    else if (n.shape === 'diamond') line = `${n.id}{${n.label}}`;
+    else if (n.shape === 'sub') line = `${n.id}[(${n.label})]`;
+    else if (n.shape === 'circle') line = `${n.id}((${n.label}))`;
+    else line = `${n.id}[${n.label}]`;
+    mer += line + '\n';
+  }
+
+  for (const e of edges) {
+    const lbl = e.label ? `|${e.label}|` : '';
+    mer += `${e.from} -->${lbl} ${e.to}\n`;
+  }
+
+  return mer;
+}
+
+document.getElementById('genBtn').addEventListener('click', ()=> {
+  const code = document.getElementById('code').value;
+  let ast;
+  try {
+    ast = esprima.parseScript(code, {range:true, loc:true});
+  } catch(err) {
+    document.getElementById('diagram').innerText = 'Parse error: ' + err.message;
+    return;
+  }
+
+  // Find top-level statements
+  const progStmts = ast.body;
+  const graph = buildFromStatements(progStmts);
+  const dir = document.getElementById('dir').value || 'TD';
+  const mer = renderMermaid(graph.nodes, graph.edges, dir);
+
+  // Render with mermaid
+  const container = document.getElementById('diagram');
+  container.innerHTML = '<div class="mermaid">'+mer.replace(/</g,'&lt;')+'</div>';
+
+  // mermaid init on the new element
+  mermaid.init(undefined, container.querySelectorAll('.mermaid'));
+});
+</script>
+</body>
+</html>
