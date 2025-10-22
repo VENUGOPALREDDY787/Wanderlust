@@ -1,6 +1,6 @@
 # Wanderlust 🏡
 
-![Wanderlust Logo](https://via.placeholder.com/150)  
+ 
 A full-stack clone of Airbnb, built for exploring property listings, making bookings, and simulating a travel marketplace.
 
 ---
@@ -53,20 +53,6 @@ This project is designed for learning **full-stack development** using Node.js, 
 - **Database:** MongoDB / MongoDB Atlas
 - **Authentication:** Passport.js / JWT (if implemented)
 - **Version Control:** Git & GitHub
-
----
-
-## Screenshots
-> Replace the URLs with actual screenshots of your project
-
-**Home Page**  
-![Home Page](https://via.placeholder.com/800x400)  
-
-**Property Listing**  
-![Property Listing](https://via.placeholder.com/800x400)  
-
-**Booking Page**  
-![Booking Page](https://via.placeholder.com/800x400)  
 
 ---
 
