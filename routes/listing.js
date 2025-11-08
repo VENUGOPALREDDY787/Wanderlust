@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const warpAsync = require("../utils/warpAsync.js");
 const Listing = require("../models/listing.js");
-const { isLoggedIn, isOwner, validateListing } = require("../middleware.js");
+const { isLoggedIn, isOwner, validateListing } = require("../authMiddleware.js");
 const {
   index,
   New,

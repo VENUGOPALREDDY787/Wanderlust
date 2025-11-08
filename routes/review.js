@@ -5,7 +5,7 @@ const Listing = require("../models/listing.js");
 const Review = require("../models/review.js");
 const ExpressErrors = require("../utils/ExpressErrors.js");
 const {reviewSchema} = require("../schema.js");
-const {validateReview, isLoggedIn, isAuthor} = require("../middleware.js")
+const {validateReview, isLoggedIn, isAuthor} = require("../authMiddleware.js")
 const {createReview} = require("../controllers/reviews.js");
 const { deleteListing } = require('../controllers/listings.js');
 

@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require("../models/user.js");
 const warpAsync = require("../utils/warpAsync.js");
 const passport = require("passport");
-const { saveRedirectUrl } = require("../middleware.js");
+const { saveRedirectUrl } = require("../authMiddleware.js");
 const {
   signupform,
   NewUser,
