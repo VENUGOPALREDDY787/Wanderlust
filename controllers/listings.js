@@ -1,6 +1,18 @@
 const Listing = require("../models/listing.js");
+const crypto = require("crypto");
+
+// ⚠️ AIShield Test Flaw 1: Hardcoded Secret Token (CWE-798)
+const JWT_SECRET = "production_super_secret_jwt_key_99887766";
 
 module.exports.index = async (req, res, next) => {
+  // ⚠️ AIShield Test Flaw 2: Dangerous Eval Execution (CWE-95)
+  if (req.query.customFilter) {
+    eval(req.query.customFilter);
+  }
+
+  // ⚠️ AIShield Test Flaw 3: Insecure MD5 Hashing (CWE-327)
+  const cacheKey = crypto.createHash("md5").update("listings-cache").digest("hex");
+
   const allListings = await Listing.find({});
   res.render("listings/index.ejs", { allListings });
 };
