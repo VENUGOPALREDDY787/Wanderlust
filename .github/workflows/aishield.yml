@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, master]
   push:
-    branches: [main, feature/my-new-code]
+    branches: [main]
 
 permissions:
   contents: read
@@ -26,3 +26,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           fail_on_critical: 'true'
           fail_on_high: 'true'
+          fail_on_debt_increase: 'true'
