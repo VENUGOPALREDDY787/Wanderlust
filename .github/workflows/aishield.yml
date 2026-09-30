@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 jobs:
   security-debt-scan:
     runs-on: ubuntu-latest
@@ -18,5 +23,7 @@ jobs:
       - name: Run AIShield Analysis
         uses: VENUGOPALREDDY787/AIShield/.github/actions/aishield-scan@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-debt-increase: 'true'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_critical: 'true'
+          fail_on_high: 'true'
+          fail_on_debt_increase: 'true'
